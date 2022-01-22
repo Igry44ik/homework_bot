@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import time
@@ -36,9 +37,10 @@ def send_message(bot, message):
     """Отправляет сообщение в телеграм чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.info('Сообщение успешно отправлено')
-    except Exception as error:
-        logging.error(f'Сообщение не отправлено. Ошибка: {error}')
+        logger.info('Сообщение успешно отправлено')
+    except telegram.TelegramError as telegramerror:
+        logger.error(
+            f'Сообщение не отправлено: {telegramerror}')
 
 
 def get_api_answer(current_timestamp):
@@ -50,14 +52,16 @@ def get_api_answer(current_timestamp):
     except requests.exceptions.ConnectTimeout as error:
         logger.error(f'Сервер долго не отвечает. Ошибка: {error}')
         raise error
+    except requests.exceptions.ConnectionError as connectionerror:
+        logger.error(f'Проблема с сетью. Ошибка: {connectionerror}')
     if response.status_code != HTTPStatus.OK:
         logger.error('API недоступен')
         raise requests.HTTPError(f'API недоступен'
                                  f'Код ответа: {response.status_code}')
     try:
         return response.json()
-    except Exception as error:
-        logger.error(f'Не верный JSON. Ошибка: {error}')
+    except json.JSONDecodeError as jsonerror:
+        logger.error(f'Не верный JSON. Ошибка: {jsonerror}')
 
 
 def check_response(response):
@@ -66,6 +70,10 @@ def check_response(response):
         raise TypeError('Отсутствуют данные')
     if type(response['homeworks']) != list:
         raise TypeError(' Домашки приходят не в виде списка')
+    if len(response) == 0:
+        raise Exception('Словарь пустой')
+    if 'homeworks' not in response.keys():
+        raise KeyError('Не существуетключа: "homeworks"')
     homeworks = response.get('homeworks')
     return homeworks
 
@@ -78,8 +86,10 @@ def parse_status(homework):
         logger.error(f'Нет значения {homework_name}')
     if homework_status is None:
         logger.error(f'Нет значения {homework_status}')
-    verdict = HOMEWORK_STATUSES[homework_status]
-    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+    if homework_status in HOMEWORK_STATUSES:
+        verdict = HOMEWORK_STATUSES[homework_status]
+        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+    raise KeyError('Неверное значение статуса')
 
 
 def check_tokens():
@@ -104,6 +114,7 @@ def check_tokens():
 def main():
     """Основная логика работы бота."""
     if not check_tokens():
+        logger.critical('Отсутствуют необходимые переменные окружения')
         exit()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
