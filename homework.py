@@ -51,30 +51,46 @@ def get_api_answer(current_timestamp):
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
     except requests.exceptions.ConnectTimeout as error:
         logger.error(f'Сервер долго не отвечает. Ошибка: {error}')
-        raise error
+        raise SystemExit(error)
     except requests.exceptions.ConnectionError as connectionerror:
         logger.error(f'Проблема с сетью. Ошибка: {connectionerror}')
+        raise SystemExit(connectionerror)
+    except requests.exceptions.RequestException as requestexception:
+        logger.error(f'Код ответа API: {requestexception}')
+        raise SystemExit(requestexception)
+    except requests.exception.TooManyRedirects as toomanyredirects:
+        error_redirects = 'Много перенаправлений при обращении к API'
+        logger.error(error_redirects)
+        raise SystemExit(toomanyredirects)
     if response.status_code != HTTPStatus.OK:
+        errorHttp = 'API недоступен. Код ответа: {response.status_code }'
         logger.error('API недоступен')
-        raise requests.HTTPError(f'API недоступен'
-                                 f'Код ответа: {response.status_code}')
+        raise requests.exception.HTTPError(errorHttp)
     try:
         return response.json()
     except json.JSONDecodeError as jsonerror:
         logger.error(f'Не верный JSON. Ошибка: {jsonerror}')
+        raise SystemExit(jsonerror)
 
 
 def check_response(response):
     """Проверяет ответ API на корректность."""
-    if response['homeworks'] is None:
-        raise TypeError('Отсутствуют данные')
+    try:
+        response['homeworks']
+    except KeyError:
+        logger.error(
+            'Ключа "homeworks" не существует'
+            'или он неправильный'
+        )
+    if response.get('homeworks') is None:
+        raise TypeError('В response приходит неправильное значение')
     if type(response['homeworks']) != list:
         raise TypeError(' Домашки приходят не в виде списка')
     if len(response) == 0:
         raise Exception('Словарь пустой')
-    if 'homeworks' not in response.keys():
-        raise KeyError('Не существуетключа: "homeworks"')
     homeworks = response.get('homeworks')
+    if len(homeworks) == 0:
+        raise TypeError('Ответ в виде списка пришел пустым')
     return homeworks
 
 
